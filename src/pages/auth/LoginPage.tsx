@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
@@ -40,12 +40,13 @@ const LoginPage = () => {
         resolver: zodResolver(isSignup ? signupSchema : loginSchema),
     });
 
-    const handleNavigation = (role?: string) => {
-        const targetRole = role || useAuthStore.getState().user?.role;
-        if (targetRole === 'doctor') navigate('/doctor');
-        else if (targetRole === 'admin') navigate('/admin');
-        else navigate('/patient');
-    };
+    useEffect(() => {
+        if (user) {
+            if (user.role === 'admin') navigate('/admin');
+            else if (user.role === 'doctor') navigate('/doctor');
+            else navigate('/patient');
+        }
+    }, [user, navigate]);
 
     const onSubmit = async (data: any) => {
         setIsLoading(true);
@@ -57,13 +58,10 @@ const LoginPage = () => {
                 await login(data.email, data.password);
                 toast.success('Logged in successfully!');
             }
-            // Add a small delay to ensure store updates or just rely on the await
-            handleNavigation();
-
+            // Navigation handled by useEffect
         } catch (error: any) {
             console.error(error);
             toast.error(error.message || 'Authentication failed');
-        } finally {
             setIsLoading(false);
         }
     };
@@ -139,7 +137,7 @@ const LoginPage = () => {
                                 try {
                                     await loginWithGoogle();
                                     toast.success('Logged in with Google successfully!');
-                                    handleNavigation();
+                                    // Navigation handled by useEffect
                                 } catch (error: any) {
                                     console.error(error);
                                     toast.error(error.message || 'Google Sign-In failed');
