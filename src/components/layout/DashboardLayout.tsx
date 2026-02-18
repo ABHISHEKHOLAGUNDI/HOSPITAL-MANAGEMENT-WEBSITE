@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -26,6 +26,14 @@ const DashboardLayout = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+    useEffect(() => {
+        if (location.pathname === '/' && user) {
+            if (user.role === 'admin') navigate('/admin');
+            else if (user.role === 'doctor') navigate('/doctor');
+            else navigate('/patient');
+        }
+    }, [location.pathname, user, navigate]);
 
     // Define links based on role
     const getLinks = (): SidebarLink[] => {

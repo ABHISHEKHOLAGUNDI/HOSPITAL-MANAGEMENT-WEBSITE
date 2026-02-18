@@ -28,19 +28,44 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     initialize: () => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                const userDocRef = doc(db, 'users', firebaseUser.uid);
-                const userDoc = await getDoc(userDocRef);
+            try {
+                if (firebaseUser) {
+                    const userDocRef = doc(db, 'users', firebaseUser.uid);
+                    const userDoc = await getDoc(userDocRef);
 
-                if (userDoc.exists()) {
-                    const userData = userDoc.data() as User;
-                    set({ user: userData, isLoading: false });
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data() as User;
+
+                        // SELF-HEALING: Enforce Role based on Email Prefix
+                        let finalRole = userData.role;
+                        let needsUpdate = false;
+
+                        if (firebaseUser.email?.startsWith('admin') && userData.role !== 'admin') {
+                            finalRole = 'admin';
+                            needsUpdate = true;
+                        } else if (firebaseUser.email?.startsWith('doctor') && userData.role !== 'doctor') {
+                            finalRole = 'doctor';
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            console.log(`Self-healing role for ${firebaseUser.email}: ${userData.role} -> ${finalRole}`);
+                            const updatedUser = { ...userData, role: finalRole };
+                            await setDoc(userDocRef, updatedUser, { merge: true });
+                            set({ user: updatedUser, isLoading: false });
+                        } else {
+                            set({ user: userData, isLoading: false });
+                        }
+                    } else {
+                        console.warn("User authenticated but no Firestore doc found for:", firebaseUser.uid);
+                        // Fallback creation logic could go here, but for now just clear
+                        set({ user: null, isLoading: false });
+                    }
                 } else {
-                    // If auth exists but no firestore doc (e.g. fresh google sign in), 
-                    // we handle it in the login function or leave user null until doc created
                     set({ user: null, isLoading: false });
                 }
-            } else {
+            } catch (error) {
+                console.error("Error in onAuthStateChanged:", error);
                 set({ user: null, isLoading: false });
             }
         });
