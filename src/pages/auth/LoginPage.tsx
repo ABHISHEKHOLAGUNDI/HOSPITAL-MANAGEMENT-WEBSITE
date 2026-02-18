@@ -62,6 +62,7 @@ const LoginPage = () => {
         } catch (error: any) {
             console.error(error);
             toast.error(error.message || 'Authentication failed');
+        } finally {
             setIsLoading(false);
         }
     };
