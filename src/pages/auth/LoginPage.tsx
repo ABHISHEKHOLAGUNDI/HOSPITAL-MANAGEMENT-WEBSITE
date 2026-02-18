@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Building2, Stethoscope, User, ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/store/useAuthStore';
-import { cn } from '@/lib/utils';
 
 // Validation Schemas
 const loginSchema = z.object({
@@ -32,33 +32,40 @@ const LoginPage = () => {
     const [searchParams] = useSearchParams();
     const isSignupInit = searchParams.get('signup') === 'true';
     const [isSignup, setIsSignup] = useState(isSignupInit);
-    const [role, setRole] = useState<'patient' | 'doctor' | 'admin'>('patient');
     const [isLoading, setIsLoading] = useState(false);
-    const { login } = useAuthStore();
+    const { login, signup, loginWithGoogle, user } = useAuthStore();
     const navigate = useNavigate();
 
     const { register, handleSubmit, formState: { errors } } = useForm<SignupFormData>({
         resolver: zodResolver(isSignup ? signupSchema : loginSchema),
     });
 
+    const handleNavigation = (role?: string) => {
+        const targetRole = role || useAuthStore.getState().user?.role;
+        if (targetRole === 'doctor') navigate('/doctor');
+        else if (targetRole === 'admin') navigate('/admin');
+        else navigate('/patient');
+    };
+
     const onSubmit = async (data: any) => {
         setIsLoading(true);
+        try {
+            if (isSignup) {
+                await signup(data.email, data.password, data.name);
+                toast.success('Account created successfully!');
+            } else {
+                await login(data.email, data.password);
+                toast.success('Logged in successfully!');
+            }
+            // Add a small delay to ensure store updates or just rely on the await
+            handleNavigation();
 
-        // Simulate API call
-        setTimeout(() => {
-            login({
-                uid: '12345',
-                email: data.email,
-                displayName: isSignup ? data.name : 'Test User',
-                role: role,
-            });
+        } catch (error: any) {
+            console.error(error);
+            toast.error(error.message || 'Authentication failed');
+        } finally {
             setIsLoading(false);
-
-            // Redirect based on role
-            if (role === 'doctor') navigate('/doctor');
-            else if (role === 'admin') navigate('/admin');
-            else navigate('/patient');
-        }, 1500);
+        }
     };
 
     return (
@@ -78,30 +85,6 @@ const LoginPage = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {/* Role Toggle */}
-                    <div className="grid grid-cols-3 gap-2 mb-6 p-1 bg-slate-100/80 rounded-lg">
-                        {[
-                            { id: 'patient', icon: User, label: 'Patient' },
-                            { id: 'doctor', icon: Stethoscope, label: 'Doctor' },
-                            { id: 'admin', icon: Building2, label: 'Admin' }
-                        ].map((r) => (
-                            <button
-                                key={r.id}
-                                type="button"
-                                onClick={() => setRole(r.id as any)}
-                                className={cn(
-                                    "flex flex-col items-center justify-center py-2 px-1 rounded-md text-xs font-medium transition-all duration-200",
-                                    role === r.id
-                                        ? "bg-white text-primary shadow-sm ring-1 ring-black/5"
-                                        : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
-                                )}
-                            >
-                                <r.icon className={cn("h-4 w-4 mb-1", role === r.id ? "text-primary" : "text-slate-500")} />
-                                {r.label}
-                            </button>
-                        ))}
-                    </div>
-
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                         {isSignup && (
                             <div className="space-y-2">
@@ -135,6 +118,40 @@ const LoginPage = () => {
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                             {isSignup ? 'Sign Up' : 'Log In'}
                             {!isLoading && <ArrowRight className="h-4 w-4 ml-2" />}
+                        </Button>
+
+                        <div className="relative my-4">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
+                            </div>
+                        </div>
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            disabled={isLoading}
+                            onClick={async () => {
+                                setIsLoading(true);
+                                try {
+                                    await loginWithGoogle();
+                                    toast.success('Logged in with Google successfully!');
+                                    handleNavigation();
+                                } catch (error: any) {
+                                    console.error(error);
+                                    toast.error(error.message || 'Google Sign-In failed');
+                                } finally {
+                                    setIsLoading(false);
+                                }
+                            }}
+                        >
+                            <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+                                <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
+                            </svg>
+                            Google
                         </Button>
                     </form>
                 </CardContent>
