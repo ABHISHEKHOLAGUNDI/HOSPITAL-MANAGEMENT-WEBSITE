@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { Calendar as CalendarIcon, Users, Clock, CheckCircle, XCircle, Loader2, Plus, Search, FileText, ClipboardList, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -17,6 +16,7 @@ import { usePatientStore } from '@/store/usePatientStore';
 import { cn } from '@/lib/utils';
 import { format, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
 
 // Mock Services for Doctor Booking
 const SERVICES = [
@@ -30,6 +30,9 @@ export default function DoctorDashboard() {
     const { user } = useAuthStore();
     const { appointments, subscribeToDoctorAppointments, updateAppointmentStatus, rescheduleAppointment, bookAppointment, cleanup, isLoading: isAptLoading } = useAppointmentStore();
     const { patients, fetchAllPatients, searchPatients, clearSearch, isLoading: isPatientLoading } = usePatientStore();
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentTab = searchParams.get('tab') || 'overview';
 
     const [isBookingOpen, setIsBookingOpen] = useState(false);
     const [rescheduleId, setRescheduleId] = useState<string | null>(null);
@@ -243,7 +246,7 @@ export default function DoctorDashboard() {
                 ))}
             </div>
 
-            <Tabs defaultValue="overview" className="space-y-4">
+            <Tabs value={currentTab} onValueChange={(v) => setSearchParams(prev => { prev.set('tab', v); return prev; }, { replace: true })} className="space-y-4">
                 <TabsList className="bg-white/50 backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-3">
                     <TabsTrigger value="overview" className="py-2.5">Overview</TabsTrigger>
                     <TabsTrigger value="calendar" className="py-2.5">Calendar</TabsTrigger>
@@ -428,11 +431,38 @@ export default function DoctorDashboard() {
                                                 </div>
                                             </div>
 
-                                            <Tabs defaultValue="notes" className="w-full">
-                                                <TabsList className="grid w-full grid-cols-2 bg-slate-100/50">
+                                            <Tabs defaultValue="timeline" className="w-full">
+                                                <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 dark:bg-slate-800">
+                                                    <TabsTrigger value="timeline">History Timeline</TabsTrigger>
                                                     <TabsTrigger value="notes">Consultation Notes</TabsTrigger>
                                                     <TabsTrigger value="prescription">Digital Prescription</TabsTrigger>
                                                 </TabsList>
+
+                                                <TabsContent value="timeline" className="mt-4">
+                                                    <div className="space-y-4 pl-4 border-l-2 border-slate-200 dark:border-slate-800 mt-6 relative">
+                                                        {appointments
+                                                            .filter(a => a.patientId === selectedEmrPatient.uid && a.status === 'completed')
+                                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                            .map((histApt, index) => (
+                                                                <div key={index} className="relative pl-6 pb-6">
+                                                                    <div className="absolute -left-[27px] top-1 h-5 w-5 rounded-full border-4 border-card bg-teal-500" />
+                                                                    <h4 className="font-medium text-sm text-foreground">{histApt.serviceName}</h4>
+                                                                    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                                                                        <CalendarIcon className="h-3 w-3" /> {format(new Date(histApt.date), 'MMMM d, yyyy')}
+                                                                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                                                                        <span>Dr. {histApt.doctorName}</span>
+                                                                    </div>
+                                                                    <p className="text-sm mt-3 text-muted-foreground bg-muted/50 p-3 rounded-md border border-border">
+                                                                        Patient presented for scheduled {histApt.serviceName.toLowerCase()}. Procedure completed successfully. Post-care instructions provided.
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        {appointments.filter(a => a.patientId === selectedEmrPatient.uid && a.status === 'completed').length === 0 && (
+                                                            <div className="text-sm text-muted-foreground py-4 -ml-4 pl-4">No completed appointments found in patient history.</div>
+                                                        )}
+                                                    </div>
+                                                </TabsContent>
+
                                                 <TabsContent value="notes" className="mt-4 space-y-4">
                                                     <Textarea
                                                         placeholder="Type diagnostic notes, observations, and treatment plans here..."

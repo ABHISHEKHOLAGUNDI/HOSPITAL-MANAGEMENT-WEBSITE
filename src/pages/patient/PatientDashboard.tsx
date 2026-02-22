@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Clock, FileText, Plus, Activity, Download, Pill, FileSignature, Receipt } from 'lucide-react';
+import { Calendar, Clock, Plus, Download, Pill, FileSignature, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,13 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppointmentStore } from '@/store/useAppointmentStore';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 const PatientDashboard = () => {
     const { user } = useAuthStore();
     const { appointments, subscribeToPatientAppointments, cleanup } = useAppointmentStore();
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentTab = searchParams.get('tab') || 'overview';
 
     useEffect(() => {
         if (user?.uid) {
@@ -86,7 +90,7 @@ const PatientDashboard = () => {
                 <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-40 h-40 rounded-full bg-black/10 blur-2xl" />
             </motion.div>
 
-            <Tabs defaultValue="overview" className="space-y-6">
+            <Tabs value={currentTab} onValueChange={(v) => setSearchParams(prev => { prev.set('tab', v); return prev; }, { replace: true })} className="space-y-6">
                 <TabsList className="bg-white/50 backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-2 md:grid-cols-4">
                     <TabsTrigger value="overview" className="py-2.5">Overview</TabsTrigger>
                     <TabsTrigger value="history" className="py-2.5">History</TabsTrigger>

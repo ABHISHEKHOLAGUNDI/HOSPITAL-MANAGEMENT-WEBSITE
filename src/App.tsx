@@ -9,7 +9,8 @@ import PatientDashboard from '@/pages/patient/PatientDashboard'
 import BookAppointment from '@/pages/patient/BookAppointment'
 import DoctorDashboard from '@/pages/doctor/DoctorDashboard'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
-import Background3D from '@/components/Background3D'; // Added this import
+import Background3D from '@/components/Background3D';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) => {
@@ -36,33 +37,35 @@ function App() {
     }, [initialize])
 
     return (
-        <Router>
-            <div className="min-h-screen bg-background font-sans antialiased text-foreground">
-                <Background3D />
-                <Routes>
-                    {/* Public Routes */}
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={<LoginPage />} />
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <Router>
+                <div className="min-h-screen bg-background font-sans antialiased text-foreground">
+                    <Background3D />
+                    <Routes>
+                        {/* Public Routes */}
+                        <Route path="/" element={<LandingPage />} />
+                        <Route path="/login" element={<LoginPage />} />
 
-                    {/* Protected Dashboard Routes */}
-                    <Route path="/" element={<ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}><DashboardLayout /></ProtectedRoute>}>
-                        <Route path="patient" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
-                        <Route path="patient/book" element={<ProtectedRoute allowedRoles={['patient']}><BookAppointment /></ProtectedRoute>} />
-                        <Route path="doctor" element={<ProtectedRoute allowedRoles={['doctor']}><DoctorDashboard /></ProtectedRoute>} />
-                        <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+                        {/* Protected Dashboard Routes */}
+                        <Route path="/" element={<ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}><DashboardLayout /></ProtectedRoute>}>
+                            <Route path="patient" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
+                            <Route path="patient/book" element={<ProtectedRoute allowedRoles={['patient']}><BookAppointment /></ProtectedRoute>} />
+                            <Route path="doctor" element={<ProtectedRoute allowedRoles={['doctor']}><DoctorDashboard /></ProtectedRoute>} />
+                            <Route path="admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
 
-                        {/* Fallback for dashboard sub-routes */}
-                        <Route path="patient/*" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
-                        <Route path="doctor/*" element={<ProtectedRoute allowedRoles={['doctor']}><DoctorDashboard /></ProtectedRoute>} />
-                        <Route path="admin/*" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-                    </Route>
+                            {/* Fallback for dashboard sub-routes */}
+                            <Route path="patient/*" element={<ProtectedRoute allowedRoles={['patient']}><PatientDashboard /></ProtectedRoute>} />
+                            <Route path="doctor/*" element={<ProtectedRoute allowedRoles={['doctor']}><DoctorDashboard /></ProtectedRoute>} />
+                            <Route path="admin/*" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+                        </Route>
 
-                    {/* Global Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-                <Toaster />
-            </div>
-        </Router>
+                        {/* Global Fallback */}
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                    <Toaster />
+                </div>
+            </Router>
+        </ThemeProvider>
     )
 }
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useNotificationStore } from '@/store/useNotificationStore';
 
 export interface Appointment {
     id: string;
@@ -100,6 +101,12 @@ export const useAppointmentStore = create<AppointmentState>()(
                 const currentAll = get().allAppointments;
                 set({ allAppointments: [...currentAll, newAppointment as Appointment], isLoading: false });
                 get()._applyFilter();
+
+                // Trigger Notifications
+                const { addNotification } = useNotificationStore.getState();
+                addNotification(newAppointment.doctorId, 'New Appointment', `Patient ${newAppointment.patientName} booked an appointment for ${newAppointment.date} at ${newAppointment.time}.`);
+                addNotification(newAppointment.patientId, 'Appointment Booked', `Your appointment with Dr. ${newAppointment.doctorName} is pending confirmation.`);
+
             } catch (error: any) {
                 set({ error: error.message, isLoading: false });
                 throw error;
@@ -112,6 +119,12 @@ export const useAppointmentStore = create<AppointmentState>()(
             const updated = currentAll.map(apt => apt.id === id ? { ...apt, status } : apt);
             set({ allAppointments: updated });
             get()._applyFilter();
+
+            const targetApt = currentAll.find(a => a.id === id);
+            if (targetApt) {
+                const { addNotification } = useNotificationStore.getState();
+                addNotification(targetApt.patientId, 'Status Update', `Your appointment on ${targetApt.date} has been ${status}.`);
+            }
 
             try {
                 await fetch(`/api/appointments/${id}`, {
@@ -131,6 +144,13 @@ export const useAppointmentStore = create<AppointmentState>()(
             const updated = currentAll.map(apt => apt.id === id ? { ...apt, status: 'cancelled' as const } : apt);
             set({ allAppointments: updated });
             get()._applyFilter();
+
+            const targetApt = currentAll.find(a => a.id === id);
+            if (targetApt) {
+                const { addNotification } = useNotificationStore.getState();
+                addNotification(targetApt.patientId, 'Appointment Cancelled', `Your appointment with Dr. ${targetApt.doctorName} on ${targetApt.date} was cancelled.`);
+                addNotification(targetApt.doctorId, 'Appointment Cancelled', `Patient ${targetApt.patientName} cancelled their appointment on ${targetApt.date}.`);
+            }
 
             try {
                 await fetch(`/api/appointments/${id}`, {
@@ -152,6 +172,13 @@ export const useAppointmentStore = create<AppointmentState>()(
             const updated = currentAll.map(apt => apt.id === id ? { ...apt, date: newDate, time: newTime, status: 'confirmed' as const } : apt);
             set({ allAppointments: updated, isLoading: false });
             get()._applyFilter();
+
+            const targetApt = currentAll.find(a => a.id === id);
+            if (targetApt) {
+                const { addNotification } = useNotificationStore.getState();
+                addNotification(targetApt.patientId, 'Appointment Rescheduled', `Your appointment is rescheduled to ${newDate} at ${newTime}.`);
+                addNotification(targetApt.doctorId, 'Appointment Rescheduled', `Patient ${targetApt.patientName}'s appointment rescheduled to ${newDate} at ${newTime}.`);
+            }
         },
 
         subscribeToPatientAppointments: (patientId) => {

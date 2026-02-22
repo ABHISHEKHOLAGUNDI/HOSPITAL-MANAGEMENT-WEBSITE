@@ -15,6 +15,8 @@ import { useDoctorStore } from '@/store/useDoctorStore';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useSearchParams } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // Mock Services
 const SERVICES = [
@@ -28,6 +30,10 @@ export default function AdminDashboard() {
     const { appointments, subscribeToAllAppointments, cleanup, isLoading, bookAppointment } = useAppointmentStore();
     const { patients, searchPatients, clearSearch, fetchAllPatients, isLoading: isSearching } = usePatientStore();
     const { doctors, fetchDoctors } = useDoctorStore();
+
+    // URL Sync State
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentTab = searchParams.get('tab') || 'overview';
 
     // Assignment / Modal State
     const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -114,6 +120,54 @@ export default function AdminDashboard() {
     const handleGenerateInvoice = () => {
         toast.success("Invoice generated successfully & emailed to patient.");
     }
+
+    const exportToCSV = (data: any[], filename: string) => {
+        if (!data || data.length === 0) {
+            toast.error("No data to export");
+            return;
+        }
+        // Very basic CSV exporter, omits nested objects but works for flat stores
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map(obj => Object.values(obj).map(val => `"${val}"`).join(','));
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${filename}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success(`Exported ${filename}.csv`);
+    };
+
+    // Chart Data Preparation
+    const revenueByService = appointments
+        .filter(a => a.status === 'completed' || a.status === 'confirmed')
+        .reduce((acc: any, curr) => {
+            const service = curr.serviceName;
+            const price = parseFloat(curr.price.replace('$', '')) || 0;
+            if (!acc[service]) acc[service] = 0;
+            acc[service] += price;
+            return acc;
+        }, {});
+
+    const pieData = Object.keys(revenueByService).map(key => ({
+        name: key,
+        value: revenueByService[key]
+    }));
+
+    const COLORS = ['#0F766E', '#8B5CF6', '#F59E0B', '#3B82F6', '#EF4444'];
+
+    const appointmentsByMonth = appointments.reduce((acc: any, curr) => {
+        const month = format(new Date(curr.date), 'MMM yy');
+        if (!acc[month]) acc[month] = { name: month, appointments: 0, revenue: 0 };
+        acc[month].appointments += 1;
+        if (curr.status === 'completed' || curr.status === 'confirmed') {
+            acc[month].revenue += parseFloat(curr.price.replace('$', '')) || 0;
+        }
+        return acc;
+    }, {});
+    const barData = Object.values(appointmentsByMonth);
 
     // Calculate Real Stats
     const totalRevenue = appointments
@@ -255,19 +309,25 @@ export default function AdminDashboard() {
                 </Card>
             </div>
 
-            <Tabs defaultValue="overview" className="space-y-4">
-                <TabsList className="bg-white/50 backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-3">
+            <Tabs value={currentTab} onValueChange={(v) => setSearchParams(prev => { prev.set('tab', v); return prev; }, { replace: true })} className="space-y-4">
+                <TabsList className="bg-card backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-2 lg:grid-cols-4">
                     <TabsTrigger value="overview" className="py-2.5">Schedule Overview</TabsTrigger>
+                    <TabsTrigger value="analytics" className="py-2.5">Analytics</TabsTrigger>
                     <TabsTrigger value="crm" className="py-2.5">Patient Directory</TabsTrigger>
                     <TabsTrigger value="billing" className="py-2.5">Billing & Invoicing</TabsTrigger>
                 </TabsList>
 
                 {/* OVERVIEW TAB */}
                 <TabsContent value="overview">
-                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm">
-                        <CardHeader>
-                            <CardTitle>Master Schedule</CardTitle>
-                            <CardDescription>All appointments across all doctors.</CardDescription>
+                    <Card className="bg-card backdrop-blur-xl border shadow-sm">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Master Schedule</CardTitle>
+                                <CardDescription>All appointments across all doctors.</CardDescription>
+                            </div>
+                            <Button size="sm" variant="outline" onClick={() => exportToCSV(appointments, 'appointments')}>
+                                <Download className="h-4 w-4 mr-2" /> Export CSV
+                            </Button>
                         </CardHeader>
                         <CardContent>
                             {isLoading ? (
@@ -314,22 +374,68 @@ export default function AdminDashboard() {
                     </Card>
                 </TabsContent>
 
+                {/* ANALYTICS TAB */}
+                <TabsContent value="analytics" className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <Card className="bg-card backdrop-blur-xl border shadow-sm">
+                            <CardHeader>
+                                <CardTitle>Revenue Trends</CardTitle>
+                                <CardDescription>Monthly revenue from completed/confirmed appointments.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={barData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
+                                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                                        <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--foreground))' }} />
+                                        <Legend />
+                                        <Bar dataKey="revenue" name="Revenue ($)" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-card backdrop-blur-xl border shadow-sm">
+                            <CardHeader>
+                                <CardTitle>Revenue by Specialty</CardTitle>
+                                <CardDescription>Distribution of income across services.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="h-[300px] flex items-center justify-center">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                            {pieData.map((_entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--foreground))' }} />
+                                        <Legend verticalAlign="bottom" height={36} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </TabsContent>
+
                 {/* CRM TAB */}
                 <TabsContent value="crm">
-                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm">
+                    <Card className="bg-card backdrop-blur-xl border shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Patient CRM</CardTitle>
                                 <CardDescription>Manage patient records and access.</CardDescription>
                             </div>
-                            <div className="relative w-64">
+                            <div className="flex items-center gap-2 relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder="Search directory..."
-                                    className="pl-9 h-9"
+                                    className="pl-9 h-9 w-64"
                                     value={crmSearch}
                                     onChange={(e) => setCrmSearch(e.target.value)}
                                 />
+                                <Button size="sm" variant="outline" onClick={() => exportToCSV(patients, 'patients_crm')}>
+                                    <Download className="h-4 w-4 mr-2" /> Export
+                                </Button>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -368,7 +474,7 @@ export default function AdminDashboard() {
 
                 {/* BILLING TAB */}
                 <TabsContent value="billing">
-                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm h-full">
+                    <Card className="bg-card backdrop-blur-xl border shadow-sm h-full">
                         <CardHeader className="flex flex-row items-center justify-between pb-4">
                             <div>
                                 <CardTitle>Billing & Invoices</CardTitle>
