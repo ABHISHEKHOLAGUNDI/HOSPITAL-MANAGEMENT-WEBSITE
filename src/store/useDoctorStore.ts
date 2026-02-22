@@ -1,6 +1,4 @@
 import { create } from 'zustand';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export interface Doctor {
     uid: string;
@@ -9,6 +7,13 @@ export interface Doctor {
     photoURL?: string;
     specialty?: string;
 }
+
+// Mock data for pure frontend demonstration
+const MOCK_DOCTORS: Doctor[] = [
+    { uid: 'doctor@1.com', email: 'doctor@1.com', displayName: 'Dr. Sarah Smith', specialty: 'Orthodontics' },
+    { uid: 'doctor@2.com', email: 'doctor@2.com', displayName: 'Dr. John Doe', specialty: 'General Dentistry' },
+    { uid: 'doctor@3.com', email: 'doctor@3.com', displayName: 'Dr. Emily Chen', specialty: 'Pediatric Dentistry' },
+];
 
 interface DoctorStore {
     doctors: Doctor[];
@@ -24,19 +29,10 @@ export const useDoctorStore = create<DoctorStore>((set) => ({
 
     fetchDoctors: async () => {
         set({ isLoading: true, error: null });
-        try {
-            const q = query(collection(db, 'users'), where('role', '==', 'doctor'));
-            const querySnapshot = await getDocs(q);
 
-            const doctors = querySnapshot.docs.map(doc => ({
-                uid: doc.id, // Store uid as top level for easier access
-                ...doc.data()
-            })) as Doctor[];
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-            set({ doctors, isLoading: false });
-        } catch (error: any) {
-            console.error("Error fetching doctors:", error);
-            set({ error: error.message, isLoading: false });
-        }
+        set({ doctors: MOCK_DOCTORS, isLoading: false });
     }
 }));

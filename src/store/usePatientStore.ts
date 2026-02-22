@@ -1,14 +1,20 @@
 import { create } from 'zustand';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export interface Patient {
     id: string;
-    uid: string; // Same as id usually
+    uid: string;
     displayName: string;
     email: string;
     role: 'patient';
 }
+
+// Mock data for pure frontend demonstration
+const MOCK_PATIENTS: Patient[] = [
+    { id: 'patient1', uid: 'patient1', email: 'alice@patient.com', displayName: 'Alice Johnson', role: 'patient' },
+    { id: 'patient2', uid: 'patient2', email: 'bob@patient.com', displayName: 'Bob Williams', role: 'patient' },
+    { id: 'patient3', uid: 'patient3', email: 'charlie@patient.com', displayName: 'Charlie Brown', role: 'patient' },
+    { id: 'abhishekholagundi@gmail.com', uid: 'abhishekholagundi@gmail.com', email: 'abhishekholagundi@gmail.com', displayName: 'Abhishek', role: 'patient' },
+];
 
 interface PatientStore {
     patients: Patient[];
@@ -26,30 +32,16 @@ export const usePatientStore = create<PatientStore>((set) => ({
     searchPatients: async (searchTerm) => {
         if (!searchTerm.trim()) return;
         set({ isLoading: true, error: null });
-        try {
-            // Simple search by email or exact name match (Firestore is limited on substring search without external tools like Algolia)
-            // For this demo, we will search by email as it's exact, or we can fetch a batch and filter client side if the dataset is small.
-            // Let's rely on email for exact match first, or fetches with 'startAt' for name prefix if compatible.
-            // PRO APPROACH: Fetch 'users' where role == 'patient'. Client side filter for demo purposes (assuming < 100 users).
 
-            const q = query(collection(db, 'users'), where('role', '==', 'patient'));
-            const querySnapshot = await getDocs(q);
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-            const allPatients = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as Patient[];
+        const filtered = MOCK_PATIENTS.filter(p =>
+            p.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.email.toLowerCase().includes(searchTerm.toLowerCase())
+        );
 
-            const filtered = allPatients.filter(p =>
-                p.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.email?.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-
-            set({ patients: filtered, isLoading: false });
-        } catch (error: any) {
-            console.error("Error searching patients:", error);
-            set({ error: error.message, isLoading: false });
-        }
+        set({ patients: filtered, isLoading: false });
     },
 
     clearSearch: () => set({ patients: [], error: null })
