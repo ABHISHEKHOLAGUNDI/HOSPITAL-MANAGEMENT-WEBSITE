@@ -16,17 +16,21 @@ export async function onRequestPost(context: any) {
         const body = await request.json();
         const { id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price } = body;
 
-        const { success } = await env.DB.prepare(
-            `INSERT INTO appointments (id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price).run();
+        try {
+            const result = await env.DB.prepare(
+                `INSERT INTO appointments (id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            ).bind(id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price).run();
 
-        if (success) {
-            return Response.json({ success: true, message: "Appointment created" });
-        } else {
-            return new Response("Failed to insert", { status: 500 });
+            if (result.success) {
+                return Response.json({ success: true, message: "Appointment created" });
+            } else {
+                return new Response(JSON.stringify({ error: "Failed to insert", details: result }), { status: 500 });
+            }
+        } catch (dbError: any) {
+            return new Response(JSON.stringify({ error: "DB Error", message: dbError.message }), { status: 500 });
         }
     } catch (e: any) {
-        return new Response(e.message, { status: 500 });
+        return new Response(JSON.stringify({ error: "API Error", message: e.message }), { status: 500 });
     }
 }

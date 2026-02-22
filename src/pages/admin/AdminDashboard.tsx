@@ -143,7 +143,7 @@ export default function AdminDashboard() {
 
         try {
             await bookAppointment({
-                patientId: `walkin-${Date.now()}`,
+                patientId: `walkin-${crypto.randomUUID()}`,
                 patientName: `${walkInForm.patientName} (Walk-In)`,
                 doctorId: doctor!.uid,
                 doctorName: doctor!.displayName || 'Dr. ' + doctor!.email,

@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// ../.wrangler/tmp/bundle-3fBTqz/checked-fetch.js
+// ../.wrangler/tmp/bundle-9MM0b4/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -65,17 +65,21 @@ async function onRequestPost(context) {
   try {
     const body = await request.json();
     const { id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price } = body;
-    const { success } = await env.DB.prepare(
-      `INSERT INTO appointments (id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price).run();
-    if (success) {
-      return Response.json({ success: true, message: "Appointment created" });
-    } else {
-      return new Response("Failed to insert", { status: 500 });
+    try {
+      const result = await env.DB.prepare(
+        `INSERT INTO appointments (id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, patientId, patientName, doctorId, doctorName, serviceId, serviceName, date, time, status, price).run();
+      if (result.success) {
+        return Response.json({ success: true, message: "Appointment created" });
+      } else {
+        return new Response(JSON.stringify({ error: "Failed to insert", details: result }), { status: 500 });
+      }
+    } catch (dbError) {
+      return new Response(JSON.stringify({ error: "DB Error", message: dbError.message }), { status: 500 });
     }
   } catch (e) {
-    return new Response(e.message, { status: 500 });
+    return new Response(JSON.stringify({ error: "API Error", message: e.message }), { status: 500 });
   }
 }
 __name(onRequestPost, "onRequestPost");
@@ -592,7 +596,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-3fBTqz/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-9MM0b4/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -624,7 +628,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-3fBTqz/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-9MM0b4/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

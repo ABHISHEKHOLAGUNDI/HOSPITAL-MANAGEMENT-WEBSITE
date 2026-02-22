@@ -83,7 +83,7 @@ export const useAppointmentStore = create<AppointmentState>()(
 
             const newAppointment = {
                 ...appointmentData,
-                id: Math.random().toString(36).substring(2, 11),
+                id: crypto.randomUUID(),
                 status: appointmentData.status || 'pending',
                 createdAt: new Date().toISOString(),
             };
