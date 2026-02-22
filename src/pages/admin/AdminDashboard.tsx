@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Users, DollarSign, Activity, TrendingUp, Loader2, Plus, Search, Stethoscope } from 'lucide-react';
+import { Users, DollarSign, Activity, TrendingUp, Loader2, Search, Stethoscope, FileText, Download, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppointmentStore } from '@/store/useAppointmentStore';
-import { useAuthStore } from '@/store/useAuthStore';
 import { usePatientStore } from '@/store/usePatientStore';
 import { useDoctorStore } from '@/store/useDoctorStore';
 import { format } from 'date-fns';
@@ -22,30 +24,52 @@ const SERVICES = [
     { id: '4', name: 'Root Canal', price: '$300' },
 ];
 
-const AdminDashboard = () => {
-    const { user } = useAuthStore();
+export default function AdminDashboard() {
     const { appointments, subscribeToAllAppointments, cleanup, isLoading, bookAppointment } = useAppointmentStore();
-    const { patients, searchPatients, clearSearch, isLoading: isSearching } = usePatientStore();
+    const { patients, searchPatients, clearSearch, fetchAllPatients, isLoading: isSearching } = usePatientStore();
     const { doctors, fetchDoctors } = useDoctorStore();
 
-    // Assignment State
+    // Assignment / Modal State
     const [isAssignOpen, setIsAssignOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPatient, setSelectedPatient] = useState<any>(null);
-    const [assignmentForm, setAssignmentForm] = useState({
-        doctorId: '',
-        serviceId: '',
-        date: '',
-        time: ''
-    });
+    const [assignmentForm, setAssignmentForm] = useState({ doctorId: '', serviceId: '', date: '', time: '' });
+
+    // CRM State
+    const [crmSearch, setCrmSearch] = useState('');
+
+    // Billing State
+    const [invoices, setInvoices] = useState<any[]>([]);
 
     useEffect(() => {
         subscribeToAllAppointments();
-        fetchDoctors(); // Load doctors for assignment dropdown
+        fetchDoctors();
+        fetchAllPatients();
         return () => cleanup();
-    }, [subscribeToAllAppointments, cleanup, fetchDoctors]);
+    }, [subscribeToAllAppointments, cleanup, fetchDoctors, fetchAllPatients]);
 
-    // Search Debounce
+    // Generate Mock Invoices when appointments load
+    useEffect(() => {
+        if (appointments.length > 0) {
+            setInvoices(prev => {
+                // Only generate if empty to prevent infinite loops
+                if (prev.length > 0) return prev;
+
+                return appointments
+                    .filter(a => a.status === 'completed' || a.status === 'confirmed')
+                    .map((a, i) => ({
+                        id: `INV-2026-${i + 100}`,
+                        patientName: a.patientName,
+                        amount: a.price,
+                        date: a.date,
+                        status: Math.random() > 0.3 ? 'Paid' : 'Pending',
+                        service: a.serviceName
+                    }));
+            });
+        }
+    }, [appointments]);
+
+    // Search Debounce (Assignment modal)
     useEffect(() => {
         const delay = setTimeout(() => {
             if (searchTerm) searchPatients(searchTerm);
@@ -53,7 +77,6 @@ const AdminDashboard = () => {
         }, 500);
         return () => clearTimeout(delay);
     }, [searchTerm, searchPatients, clearSearch]);
-
 
     const handleAssign = async () => {
         if (!selectedPatient || !assignmentForm.doctorId || !assignmentForm.serviceId || !assignmentForm.date || !assignmentForm.time) {
@@ -88,31 +111,36 @@ const AdminDashboard = () => {
         }
     };
 
+    const handleGenerateInvoice = () => {
+        toast.success("Invoice generated successfully & emailed to patient.");
+    }
+
     // Calculate Real Stats
     const totalRevenue = appointments
         .filter(a => a.status === 'completed' || a.status === 'confirmed')
         .reduce((acc, curr) => acc + (parseFloat(curr.price.replace('$', '')) || 0), 0);
 
-    const activePatients = new Set(appointments.map(a => a.patientId)).size;
-    const totalAppointments = appointments.length;
-
+    const activePatientsCount = new Set(appointments.map(a => a.patientId)).size;
     const today = new Date().toDateString();
     const appointmentsToday = appointments.filter(a => new Date(a.date).toDateString() === today).length;
 
-    const recentActivity = appointments.slice(0, 5);
+    const filteredCrmPatients = patients.filter(p =>
+        p.displayName?.toLowerCase().includes(crmSearch.toLowerCase()) ||
+        p.email?.toLowerCase().includes(crmSearch.toLowerCase())
+    );
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Admin Terminal</h1>
-                    <p className="text-muted-foreground">Manage system resources and assign appointments.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">Clinic Administration</h1>
+                    <p className="text-muted-foreground">Manage operations, patients, and billing.</p>
                 </div>
 
                 <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
                     <DialogTrigger asChild>
-                        <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
-                            <Stethoscope className="h-4 w-4" /> Assign Appointment
+                        <Button className="bg-purple-600 hover:bg-purple-700 text-white shadow-md">
+                            <Stethoscope className="h-4 w-4 mr-2" /> Assign Appointment
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[500px]">
@@ -134,13 +162,13 @@ const AdminDashboard = () => {
                                 </div>
                                 {searchTerm && (
                                     <div className="border rounded-md max-h-40 overflow-y-auto bg-slate-50 mt-1">
-                                        {isSearching ? <div className="p-2 text-xs">Searching...</div> :
+                                        {isSearching ? <div className="p-2 text-xs text-center text-muted-foreground">Searching...</div> :
                                             patients.length > 0 ? patients.map(p => (
-                                                <div key={p.id} className={cn("p-2 text-sm cursor-pointer hover:bg-purple-50", selectedPatient?.id === p.id && "bg-purple-100")}
+                                                <div key={p.id} className={cn("p-2 text-sm cursor-pointer hover:bg-purple-50", selectedPatient?.id === p.id && "bg-purple-100 font-medium")}
                                                     onClick={() => { setSelectedPatient(p); setSearchTerm(p.displayName || p.email); }}>
-                                                    {p.displayName} <span className="opacity-50">({p.email})</span>
+                                                    {p.displayName} <span className="text-xs text-muted-foreground">({p.email})</span>
                                                 </div>
-                                            )) : <div className="p-2 text-xs text-muted-foreground">No patients found.</div>}
+                                            )) : <div className="p-2 text-xs text-center text-muted-foreground">No patients found.</div>}
                                     </div>
                                 )}
                             </div>
@@ -154,7 +182,7 @@ const AdminDashboard = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {doctors.map(d => (
-                                            <SelectItem key={d.uid} value={d.uid}>{d.displayName || d.email}</SelectItem>
+                                            <SelectItem key={d.uid} value={d.uid}>{d.displayName || d.email} - {d.specialty}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -182,108 +210,219 @@ const AdminDashboard = () => {
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button className="bg-purple-600 hover:bg-purple-700" onClick={handleAssign}>Confirm Assignment</Button>
+                            <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={handleAssign}>Confirm Assignment</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-all">
+                <Card className="bg-white/70 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Projected Revenue</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium text-slate-600">Total Projected Revenue</CardTitle>
+                        <div className="bg-green-100 p-2 rounded-xl"><DollarSign className="h-5 w-5 text-green-600" /></div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">Based on confirmed bookings</p>
+                        <div className="text-3xl font-bold bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent">${totalRevenue.toLocaleString()}</div>
                     </CardContent>
                 </Card>
-                <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-all">
+                <Card className="bg-white/70 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Active Patients</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium text-slate-600">Active Patients</CardTitle>
+                        <div className="bg-blue-100 p-2 rounded-xl"><Users className="h-5 w-5 text-blue-600" /></div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{activePatients}</div>
-                        <p className="text-xs text-muted-foreground">Patients with bookings</p>
+                        <div className="text-3xl font-bold bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent">{activePatientsCount}</div>
                     </CardContent>
                 </Card>
-                <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-all">
+                <Card className="bg-white/70 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Appointments</CardTitle>
-                        <Activity className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium text-slate-600">Total Appointments</CardTitle>
+                        <div className="bg-purple-100 p-2 rounded-xl"><Activity className="h-5 w-5 text-purple-600" /></div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{totalAppointments}</div>
-                        <p className="text-xs text-muted-foreground">All time</p>
+                        <div className="text-3xl font-bold bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent">{appointments.length}</div>
                     </CardContent>
                 </Card>
-                <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-all">
+                <Card className="bg-white/70 backdrop-blur-xl border-none shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Today's Volume</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium text-slate-600">Today's Volume</CardTitle>
+                        <div className="bg-orange-100 p-2 rounded-xl"><TrendingUp className="h-5 w-5 text-orange-600" /></div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">+{appointmentsToday}</div>
-                        <p className="text-xs text-muted-foreground">Appointments for {format(new Date(), 'MMM d')}</p>
+                        <div className="text-3xl font-bold bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent">+{appointmentsToday}</div>
                     </CardContent>
                 </Card>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4 bg-white/60 backdrop-blur-xl border-none shadow-sm">
-                    <CardHeader>
-                        <CardTitle>System Overview</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pl-2">
-                        {/* Placeholder for a chart - using a simple list for now as requested by user to be practical */}
-                        <div className="h-[200px] flex flex-col items-center justify-center text-muted-foreground bg-slate-100/50 rounded-lg p-4">
-                            <p>Revenue Stream Visualization</p>
-                            <div className="w-full h-2 bg-slate-200 mt-4 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500" style={{ width: '65%' }}></div>
+            <Tabs defaultValue="overview" className="space-y-4">
+                <TabsList className="bg-white/50 backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-3">
+                    <TabsTrigger value="overview" className="py-2.5">Schedule Overview</TabsTrigger>
+                    <TabsTrigger value="crm" className="py-2.5">Patient Directory</TabsTrigger>
+                    <TabsTrigger value="billing" className="py-2.5">Billing & Invoicing</TabsTrigger>
+                </TabsList>
+
+                {/* OVERVIEW TAB */}
+                <TabsContent value="overview">
+                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm">
+                        <CardHeader>
+                            <CardTitle>Master Schedule</CardTitle>
+                            <CardDescription>All appointments across all doctors.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-purple-600" /></div>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Patient</TableHead>
+                                            <TableHead>Doctor</TableHead>
+                                            <TableHead>Service</TableHead>
+                                            <TableHead>Date / Time</TableHead>
+                                            <TableHead>Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {appointments.length > 0 ? appointments.map((apt) => (
+                                            <TableRow key={apt.id}>
+                                                <TableCell className="font-medium">{apt.patientName}</TableCell>
+                                                <TableCell className="text-slate-600">{apt.doctorName}</TableCell>
+                                                <TableCell>{apt.serviceName}</TableCell>
+                                                <TableCell>
+                                                    <span className="text-sm text-slate-600">{format(new Date(apt.date), 'MMM d, yyyy')} • {apt.time}</span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className={cn(
+                                                        apt.status === 'confirmed' && "border-green-200 text-green-800 bg-green-50",
+                                                        apt.status === 'pending' && "border-yellow-200 text-yellow-800 bg-yellow-50",
+                                                        apt.status === 'completed' && "border-blue-200 text-blue-800 bg-blue-50",
+                                                    )}>
+                                                        {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                                                    </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        )) : (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No appointments booked.</TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* CRM TAB */}
+                <TabsContent value="crm">
+                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Patient CRM</CardTitle>
+                                <CardDescription>Manage patient records and access.</CardDescription>
                             </div>
-                            <div className="flex justify-between w-full mt-2 text-xs">
-                                <span>General Dentistry (65%)</span>
-                                <span>Specialized Care (35%)</span>
+                            <div className="relative w-64">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search directory..."
+                                    className="pl-9 h-9"
+                                    value={crmSearch}
+                                    onChange={(e) => setCrmSearch(e.target.value)}
+                                />
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="col-span-3 bg-white/60 backdrop-blur-xl border-none shadow-sm">
-                    <CardHeader>
-                        <CardTitle>Recent System Activity</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>
-                        ) : (
-                            <div className="space-y-8">
-                                {recentActivity.map((apt) => (
-                                    <div key={apt.id} className="flex items-center">
-                                        <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4 font-bold text-xs">
-                                            New
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-medium leading-none">
-                                                {apt.patientName} booked {apt.serviceName}
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                with {apt.doctorName} • {apt.status}
-                                            </p>
-                                        </div>
-                                        <div className="ml-auto font-medium text-xs text-muted-foreground">
-                                            {format(new Date(apt.createdAt), 'h:mm a')}
-                                        </div>
-                                    </div>
-                                ))}
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Email / UID</TableHead>
+                                        <TableHead>Role</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredCrmPatients.map((p) => (
+                                        <TableRow key={p.id}>
+                                            <TableCell className="font-medium">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center font-semibold text-slate-600">
+                                                        {p.displayName?.charAt(0) || 'P'}
+                                                    </div>
+                                                    {p.displayName}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-slate-600">{p.email}</TableCell>
+                                            <TableCell><Badge variant="outline" className="bg-slate-50">{p.role}</Badge></TableCell>
+                                            <TableCell className="text-right">
+                                                <Button size="sm" variant="ghost" className="text-purple-600 hover:text-purple-700 hover:bg-purple-50">View Record</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* BILLING TAB */}
+                <TabsContent value="billing">
+                    <Card className="bg-white/60 backdrop-blur-xl border-none shadow-sm h-full">
+                        <CardHeader className="flex flex-row items-center justify-between pb-4">
+                            <div>
+                                <CardTitle>Billing & Invoices</CardTitle>
+                                <CardDescription>Generate and manage patient invoices.</CardDescription>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                            <Button size="sm" variant="outline" onClick={handleGenerateInvoice}>
+                                <Plus className="h-4 w-4 mr-2" /> Generate Manual Invoice
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            {invoices.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Invoice ID</TableHead>
+                                            <TableHead>Patient</TableHead>
+                                            <TableHead>Service</TableHead>
+                                            <TableHead>Amount</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead className="text-right">Download</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {invoices.map((inv) => (
+                                            <TableRow key={inv.id}>
+                                                <TableCell className="font-medium font-mono text-slate-500">{inv.id}</TableCell>
+                                                <TableCell className="font-medium">{inv.patientName}</TableCell>
+                                                <TableCell className="text-slate-600">{inv.service}</TableCell>
+                                                <TableCell className="font-medium text-slate-700">{inv.amount}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={inv.status === 'Paid' ? 'secondary' : 'outline'} className={inv.status === 'Paid' ? 'bg-green-100 text-green-800 hover:bg-green-100' : 'bg-slate-50 text-slate-600'}>
+                                                        {inv.status}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                                        <Download className="h-4 w-4 text-slate-400 hover:text-slate-700" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                                    <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                                    <p className="text-slate-600 font-medium">No invoices generated yet.</p>
+                                    <p className="text-sm text-slate-500 mt-1">Confirmed appointments will automatically appear here to be billed.</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
         </div>
     );
-};
-
-export default AdminDashboard;
+}

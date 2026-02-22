@@ -21,6 +21,7 @@ interface PatientStore {
     isLoading: boolean;
     error: string | null;
     searchPatients: (searchTerm: string) => Promise<void>;
+    fetchAllPatients: () => Promise<void>;
     clearSearch: () => void;
 }
 
@@ -28,6 +29,12 @@ export const usePatientStore = create<PatientStore>((set) => ({
     patients: [],
     isLoading: false,
     error: null,
+
+    fetchAllPatients: async () => {
+        set({ isLoading: true, error: null });
+        await new Promise(resolve => setTimeout(resolve, 300));
+        set({ patients: MOCK_PATIENTS, isLoading: false });
+    },
 
     searchPatients: async (searchTerm) => {
         if (!searchTerm.trim()) return;

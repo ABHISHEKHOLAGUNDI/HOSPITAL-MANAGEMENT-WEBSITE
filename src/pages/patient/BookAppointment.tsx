@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, Clock, CheckCircle, ChevronLeft, ChevronRight, User, Stethoscope } from 'lucide-react';
+import { Clock, CheckCircle, ChevronLeft, ChevronRight, User, Stethoscope } from 'lucide-react';
 import { format, addDays, startOfToday } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -67,7 +67,10 @@ const BookAppointment = () => {
     const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 0));
 
     const handleBook = async () => {
-        if (!user || !formData.service || !formData.doctor || !formData.time) return;
+        if (!user || !formData.service || !formData.doctor || !formData.time) {
+            console.error("Validation failed:", { user, service: formData.service, doctor: formData.doctor, time: formData.time });
+            return;
+        }
 
         try {
             await bookAppointment({
@@ -80,11 +83,13 @@ const BookAppointment = () => {
                 date: formData.date.toISOString(),
                 time: formData.time!,
                 price: formData.service.price,
+                status: 'pending'
             });
 
             toast.success('Appointment Booked Successfully!');
             navigate('/patient');
         } catch (error) {
+            console.error("Booking error:", error);
             toast.error('Failed to book appointment. Please try again.');
         }
     };

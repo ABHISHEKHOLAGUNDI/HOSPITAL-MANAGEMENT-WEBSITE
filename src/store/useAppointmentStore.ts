@@ -58,6 +58,7 @@ export const useAppointmentStore = create<AppointmentState>()(
                 } else if (currentSubscription.type === 'doctor') {
                     filtered = filtered.filter(a => a.doctorId === currentSubscription.id);
                 }
+                // If type === 'all', it remains the full array
 
                 filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                 set({ appointments: filtered });
