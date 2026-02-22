@@ -6,14 +6,15 @@ export interface Patient {
     displayName: string;
     email: string;
     role: 'patient';
+    insuranceProvider?: string;
 }
 
 // Mock data for pure frontend demonstration
 const MOCK_PATIENTS: Patient[] = [
-    { id: 'patient1', uid: 'patient1', email: 'alice@patient.com', displayName: 'Alice Johnson', role: 'patient' },
-    { id: 'patient2', uid: 'patient2', email: 'bob@patient.com', displayName: 'Bob Williams', role: 'patient' },
+    { id: 'patient1', uid: 'patient1', email: 'alice@patient.com', displayName: 'Alice Johnson', role: 'patient', insuranceProvider: 'BlueCross BlueShield' },
+    { id: 'patient2', uid: 'patient2', email: 'bob@patient.com', displayName: 'Bob Williams', role: 'patient', insuranceProvider: 'Aetna' },
     { id: 'patient3', uid: 'patient3', email: 'charlie@patient.com', displayName: 'Charlie Brown', role: 'patient' },
-    { id: 'abhishekholagundi@gmail.com', uid: 'abhishekholagundi@gmail.com', email: 'abhishekholagundi@gmail.com', displayName: 'Abhishek', role: 'patient' },
+    { id: 'abhishekholagundi@gmail.com', uid: 'abhishekholagundi@gmail.com', email: 'abhishekholagundi@gmail.com', displayName: 'Abhishek', role: 'patient', insuranceProvider: 'Cigna' },
 ];
 
 interface PatientStore {

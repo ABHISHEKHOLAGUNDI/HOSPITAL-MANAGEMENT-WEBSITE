@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAppointmentStore } from '@/store/useAppointmentStore';
 import { usePatientStore } from '@/store/usePatientStore';
+import { useInventoryStore } from '@/store/useInventoryStore';
 import { cn } from '@/lib/utils';
 import { format, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
@@ -44,6 +45,8 @@ export default function DoctorDashboard() {
     const [selectedEmrPatient, setSelectedEmrPatient] = useState<any>(null);
     const [prescriptionText, setPrescriptionText] = useState('');
     const [consultationNotes, setConsultationNotes] = useState('');
+    const { items: inventoryItems, deductStock } = useInventoryStore();
+    const [selectedMeds, setSelectedMeds] = useState<{ id: string, name: string, quantity: number }[]>([]);
 
     useEffect(() => {
         if (user?.uid) {
@@ -121,10 +124,33 @@ export default function DoctorDashboard() {
     }
 
     const savePrescription = () => {
-        if (!prescriptionText.trim()) return toast.error("Prescription is empty");
+        if (!prescriptionText.trim() && selectedMeds.length === 0) return toast.error("Prescription is empty");
+
+        // Deduct stock for selected medicines
+        selectedMeds.forEach(med => {
+            deductStock(med.id, med.quantity);
+        });
+
         // In a real app, save to patient's EMR store
-        toast.success("Prescription generated successfully!");
+        toast.success("Prescription generated & inventory updated!");
         setPrescriptionText('');
+        setSelectedMeds([]);
+    }
+
+    const addMedToPrescription = (medId: string) => {
+        const item = inventoryItems.find(i => i.id === medId);
+        if (!item) return;
+
+        const existing = selectedMeds.find(m => m.id === medId);
+        if (existing) {
+            setSelectedMeds(selectedMeds.map(m => m.id === medId ? { ...m, quantity: m.quantity + 1 } : m));
+        } else {
+            setSelectedMeds([...selectedMeds, { id: item.id, name: item.name, quantity: 1 }]);
+        }
+
+        // Auto-append to textarea for manual editing
+        const addition = `\nRx: ${item.name} - Take 1`;
+        setPrescriptionText(prev => prev + addition);
     }
 
     const saveNotes = () => {
@@ -475,6 +501,35 @@ export default function DoctorDashboard() {
                                                     </div>
                                                 </TabsContent>
                                                 <TabsContent value="prescription" className="mt-4 space-y-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                                        <div className="space-y-2">
+                                                            <Label>Select from Pharmacy Inventory</Label>
+                                                            <Select onValueChange={addMedToPrescription}>
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue placeholder="Add Medicine..." />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {inventoryItems.filter(i => i.category === 'Medicine' && i.stockLevel > 0).map(item => (
+                                                                        <SelectItem key={item.id} value={item.id}>
+                                                                            {item.name} ({item.stockLevel} in stock)
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label>Selected Medications (Stock will be deducted)</Label>
+                                                            <div className="border rounded-md p-2 min-h-10 bg-slate-50 text-sm">
+                                                                {selectedMeds.length === 0 ? <span className="text-muted-foreground text-xs">No DB meds selected.</span> :
+                                                                    selectedMeds.map(m => (
+                                                                        <div key={m.id} className="flex justify-between items-center py-1 border-b last:border-0">
+                                                                            <span>{m.name}</span>
+                                                                            <span className="font-mono bg-white px-2 py-0.5 rounded border text-xs">x{m.quantity}</span>
+                                                                        </div>
+                                                                    ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                     <Textarea
                                                         placeholder="Rx: Amoxicillin 500mg - Take 1 PO TID x 7 days..."
                                                         className="min-h-[150px] font-mono text-sm resize-y"

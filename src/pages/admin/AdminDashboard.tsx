@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, DollarSign, Activity, TrendingUp, Loader2, Search, Stethoscope, FileText, Download, Plus } from 'lucide-react';
+import { Users, DollarSign, Activity, TrendingUp, Loader2, Search, Stethoscope, FileText, Download, Plus, Package, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAppointmentStore } from '@/store/useAppointmentStore';
 import { usePatientStore } from '@/store/usePatientStore';
 import { useDoctorStore } from '@/store/useDoctorStore';
+import { useInventoryStore } from '@/store/useInventoryStore';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ export default function AdminDashboard() {
     const { appointments, subscribeToAllAppointments, cleanup, isLoading, bookAppointment } = useAppointmentStore();
     const { patients, searchPatients, clearSearch, fetchAllPatients, isLoading: isSearching } = usePatientStore();
     const { doctors, fetchDoctors } = useDoctorStore();
+    const { items: inventoryItems, updateItem: updateInventoryItem } = useInventoryStore();
 
     // URL Sync State
     const [searchParams, setSearchParams] = useSearchParams();
@@ -41,11 +43,23 @@ export default function AdminDashboard() {
     const [selectedPatient, setSelectedPatient] = useState<any>(null);
     const [assignmentForm, setAssignmentForm] = useState({ doctorId: '', serviceId: '', date: '', time: '' });
 
+    // Walk-In State
+    const [isWalkInOpen, setIsWalkInOpen] = useState(false);
+    const [walkInForm, setWalkInForm] = useState({ patientName: '', phone: '', doctorId: '', serviceId: '' });
+
     // CRM State
     const [crmSearch, setCrmSearch] = useState('');
 
     // Billing State
     const [invoices, setInvoices] = useState<any[]>([]);
+    const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+    const [invoiceForm, setInvoiceForm] = useState({
+        patientId: '',
+        serviceId: '',
+        selectedItems: [] as { id: string, name: string, price: number, quantity: number }[],
+        taxRate: 10,
+        discount: 0
+    });
 
     useEffect(() => {
         subscribeToAllAppointments();
@@ -117,9 +131,80 @@ export default function AdminDashboard() {
         }
     };
 
+    const handleWalkIn = async () => {
+        if (!walkInForm.patientName || !walkInForm.doctorId || !walkInForm.serviceId) {
+            toast.error("Please fill required walk-in fields");
+            return;
+        }
+
+        const service = SERVICES.find(s => s.id === walkInForm.serviceId);
+        const doctor = doctors.find(d => d.uid === walkInForm.doctorId);
+        const now = new Date();
+
+        try {
+            await bookAppointment({
+                patientId: `walkin-${Date.now()}`,
+                patientName: `${walkInForm.patientName} (Walk-In)`,
+                doctorId: doctor!.uid,
+                doctorName: doctor!.displayName || 'Dr. ' + doctor!.email,
+                serviceId: service!.id,
+                serviceName: service!.name,
+                price: service!.price,
+                date: now.toISOString(),
+                time: format(now, 'HH:mm'), // Current time
+                status: 'pending' // Wait Queue
+            });
+
+            setIsWalkInOpen(false);
+            setWalkInForm({ patientName: '', phone: '', doctorId: '', serviceId: '' });
+            toast.success(`Walk-In added to ${doctor?.displayName}'s queue`);
+        } catch (error) {
+            toast.error("Failed to add walk-in");
+        }
+    };
+
+    const handleAddInvoiceItem = (itemId: string) => {
+        const item = inventoryItems.find(i => i.id === itemId);
+        if (!item) return;
+
+        const existing = invoiceForm.selectedItems.find(i => i.id === itemId);
+        if (existing) {
+            setInvoiceForm({ ...invoiceForm, selectedItems: invoiceForm.selectedItems.map(i => i.id === itemId ? { ...i, quantity: i.quantity + 1 } : i) });
+        } else {
+            setInvoiceForm({ ...invoiceForm, selectedItems: [...invoiceForm.selectedItems, { id: item.id, name: item.name, price: item.unitPrice, quantity: 1 }] });
+        }
+    };
+
+    const calculateInvoiceTotal = () => {
+        const servicePrice = SERVICES.find(s => s.id === invoiceForm.serviceId)?.price.replace('$', '') || '0';
+        const itemsTotal = invoiceForm.selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        const subtotal = parseFloat(servicePrice) + itemsTotal;
+        const tax = subtotal * (invoiceForm.taxRate / 100);
+        return Math.max(0, subtotal + tax - invoiceForm.discount).toFixed(2);
+    };
+
     const handleGenerateInvoice = () => {
-        toast.success("Invoice generated successfully & emailed to patient.");
-    }
+        if (!invoiceForm.patientId || !invoiceForm.serviceId) {
+            return toast.error("Please select a patient and service");
+        }
+        const patient = patients.find(p => p.uid === invoiceForm.patientId || p.id === invoiceForm.patientId);
+        const service = SERVICES.find(s => s.id === invoiceForm.serviceId);
+        const total = calculateInvoiceTotal();
+
+        const newInvoice = {
+            id: `INV-${Date.now().toString().slice(-6)}`,
+            patientName: patient?.displayName || 'Unknown',
+            amount: `$${total}`,
+            date: new Date().toISOString(),
+            status: 'Pending',
+            service: service?.name
+        };
+
+        setInvoices([newInvoice, ...invoices]);
+        setIsInvoiceOpen(false);
+        setInvoiceForm({ patientId: '', serviceId: '', selectedItems: [], taxRate: 10, discount: 0 });
+        toast.success(`Generated itemized invoice for ${newInvoice.patientName}`);
+    };
 
     const exportToCSV = (data: any[], filename: string) => {
         if (!data || data.length === 0) {
@@ -182,6 +267,9 @@ export default function AdminDashboard() {
         p.displayName?.toLowerCase().includes(crmSearch.toLowerCase()) ||
         p.email?.toLowerCase().includes(crmSearch.toLowerCase())
     );
+
+    // Live Queue Setup
+    const liveQueue = appointments.filter(a => new Date(a.date).toDateString() === today && (a.status === 'pending' || a.status === 'confirmed'));
 
     return (
         <div className="space-y-6">
@@ -268,6 +356,50 @@ export default function AdminDashboard() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                <Dialog open={isWalkInOpen} onOpenChange={setIsWalkInOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline" className="border-purple-200 text-purple-700 hover:bg-purple-50">
+                            <Users className="h-4 w-4 mr-2" /> Quick Walk-In
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[400px]">
+                        <DialogHeader>
+                            <DialogTitle>Register Walk-In Patient</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Patient Full Name</Label>
+                                <Input placeholder="John Doe" value={walkInForm.patientName} onChange={(e) => setWalkInForm({ ...walkInForm, patientName: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Phone Number (Optional)</Label>
+                                <Input placeholder="555-0199" value={walkInForm.phone} onChange={(e) => setWalkInForm({ ...walkInForm, phone: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Assign to Doctor</Label>
+                                <Select onValueChange={(val) => setWalkInForm({ ...walkInForm, doctorId: val })}>
+                                    <SelectTrigger><SelectValue placeholder="Select Doctor..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {doctors.map(d => <SelectItem key={d.uid} value={d.uid}>{d.displayName}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Service Required</Label>
+                                <Select onValueChange={(val) => setWalkInForm({ ...walkInForm, serviceId: val })}>
+                                    <SelectTrigger><SelectValue placeholder="Select Service..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {SERVICES.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button className="w-full bg-slate-900 hover:bg-slate-800" onClick={handleWalkIn}>Add to Live Queue</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -310,15 +442,43 @@ export default function AdminDashboard() {
             </div>
 
             <Tabs value={currentTab} onValueChange={(v) => setSearchParams(prev => { prev.set('tab', v); return prev; }, { replace: true })} className="space-y-4">
-                <TabsList className="bg-card backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-2 lg:grid-cols-4">
+                <TabsList className="bg-card backdrop-blur-md border p-1 border-slate-200/60 shadow-sm w-full md:w-auto h-auto grid grid-cols-2 lg:grid-cols-5">
                     <TabsTrigger value="overview" className="py-2.5">Schedule Overview</TabsTrigger>
                     <TabsTrigger value="analytics" className="py-2.5">Analytics</TabsTrigger>
-                    <TabsTrigger value="crm" className="py-2.5">Patient Directory</TabsTrigger>
-                    <TabsTrigger value="billing" className="py-2.5">Billing & Invoicing</TabsTrigger>
+                    <TabsTrigger value="crm" className="py-2.5">Patient CRM</TabsTrigger>
+                    <TabsTrigger value="billing" className="py-2.5">Billing</TabsTrigger>
+                    <TabsTrigger value="inventory" className="py-2.5">Inventory</TabsTrigger>
                 </TabsList>
 
                 {/* OVERVIEW TAB */}
-                <TabsContent value="overview">
+                <TabsContent value="overview" className="space-y-4">
+                    {/* Live Queue Cards */}
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+                        {liveQueue.slice(0, 3).map((apt, idx) => (
+                            <Card key={apt.id || idx} className="bg-gradient-to-br from-purple-50 to-white border-purple-100 shadow-sm animate-in fade-in zoom-in duration-300">
+                                <CardContent className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <Badge variant="outline" className="bg-purple-100 text-purple-800 mb-2 border-transparent">Next {idx + 1}</Badge>
+                                        <h3 className="font-semibold text-slate-800">{apt.patientName}</h3>
+                                        <p className="text-xs text-slate-500">{apt.serviceName} • {apt.time}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-sm font-medium text-slate-700">{apt.doctorName}</div>
+                                        <div className="flex gap-2 mt-2">
+                                            {apt.status === 'pending' && <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 border-none">Waiting</Badge>}
+                                            {apt.status === 'confirmed' && <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-none">In Clinic</Badge>}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                        {liveQueue.length === 0 && (
+                            <div className="col-span-full text-center py-6 border border-dashed rounded-lg bg-slate-50 text-slate-500">
+                                No active patients in the live queue right now.
+                            </div>
+                        )}
+                    </div>
+
                     <Card className="bg-card backdrop-blur-xl border shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -480,9 +640,83 @@ export default function AdminDashboard() {
                                 <CardTitle>Billing & Invoices</CardTitle>
                                 <CardDescription>Generate and manage patient invoices.</CardDescription>
                             </div>
-                            <Button size="sm" variant="outline" onClick={handleGenerateInvoice}>
-                                <Plus className="h-4 w-4 mr-2" /> Generate Manual Invoice
-                            </Button>
+                            <Dialog open={isInvoiceOpen} onOpenChange={setIsInvoiceOpen}>
+                                <DialogTrigger asChild>
+                                    <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                                        <Plus className="h-4 w-4 mr-2" /> New Invoice Builder
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col">
+                                    <DialogHeader>
+                                        <DialogTitle>Create Itemized Invoice</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-2">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Patient (Bill To)</Label>
+                                                <Select onValueChange={(val) => setInvoiceForm({ ...invoiceForm, patientId: val })}>
+                                                    <SelectTrigger><SelectValue placeholder="Select Patient..." /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {patients.map(p => <SelectItem key={p.id} value={p.id}>{p.displayName} {p.insuranceProvider ? `(${p.insuranceProvider})` : ''}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Primary Service</Label>
+                                                <Select onValueChange={(val) => setInvoiceForm({ ...invoiceForm, serviceId: val })}>
+                                                    <SelectTrigger><SelectValue placeholder="Select Service..." /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {SERVICES.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.price})</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2 border-t pt-4">
+                                            <Label>Add Inventory Items (Medicines, Supplies)</Label>
+                                            <div className="flex gap-2">
+                                                <Select onValueChange={handleAddInvoiceItem}>
+                                                    <SelectTrigger><SelectValue placeholder="Select Item to add to bill" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {inventoryItems.map(item => <SelectItem key={item.id} value={item.id}>{item.name} - ${item.unitPrice}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            {invoiceForm.selectedItems.length > 0 && (
+                                                <div className="border rounded-md mt-2">
+                                                    <Table>
+                                                        <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Cost</TableHead></TableRow></TableHeader>
+                                                        <TableBody>
+                                                            {invoiceForm.selectedItems.map(item => (
+                                                                <TableRow key={item.id}>
+                                                                    <TableCell className="py-2 text-sm">{item.name}</TableCell>
+                                                                    <TableCell className="py-2"><Badge variant="secondary">x{item.quantity}</Badge></TableCell>
+                                                                    <TableCell className="py-2">${item.price * item.quantity}</TableCell>
+                                                                </TableRow>
+                                                            ))}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                                            <div className="space-y-2">
+                                                <Label>Tax Rate (%)</Label>
+                                                <Input type="number" min="0" value={invoiceForm.taxRate} onChange={(e) => setInvoiceForm({ ...invoiceForm, taxRate: Number(e.target.value) })} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Discount ($)</Label>
+                                                <Input type="number" min="0" value={invoiceForm.discount} onChange={(e) => setInvoiceForm({ ...invoiceForm, discount: Number(e.target.value) })} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <DialogFooter className="border-t pt-4 sm:justify-between items-center">
+                                        <div className="text-xl font-bold">Total: ${calculateInvoiceTotal()}</div>
+                                        <Button className="bg-purple-600 hover:bg-purple-700" onClick={handleGenerateInvoice}>Generate Final Invoice</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </CardHeader>
                         <CardContent>
                             {invoices.length > 0 ? (
@@ -525,6 +759,72 @@ export default function AdminDashboard() {
                                     <p className="text-sm text-slate-500 mt-1">Confirmed appointments will automatically appear here to be billed.</p>
                                 </div>
                             )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* INVENTORY TAB */}
+                <TabsContent value="inventory">
+                    <Card className="bg-card backdrop-blur-xl border shadow-sm">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Pharmacy & Inventory</CardTitle>
+                                <CardDescription>Manage clinic medicines and supplies stock.</CardDescription>
+                            </div>
+                            <Button size="sm" variant="outline" onClick={() => exportToCSV(inventoryItems, 'inventory')}>
+                                <Download className="h-4 w-4 mr-2" /> Export Inventory
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Item Name</TableHead>
+                                        <TableHead>Category</TableHead>
+                                        <TableHead>Stock Level</TableHead>
+                                        <TableHead>Unit Price</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {inventoryItems.map((item) => {
+                                        const isLow = item.stockLevel <= item.threshold;
+                                        return (
+                                            <TableRow key={item.id}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <Package className="h-4 w-4 text-slate-400" />
+                                                        {item.name}
+                                                        {isLow && <Badge variant="destructive" className="ml-2 text-[10px] h-5 px-1.5"><AlertTriangle className="h-3 w-3 mr-1" /> Low</Badge>}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className="bg-slate-50">{item.category}</Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className={cn("font-medium", isLow ? "text-red-600" : "text-slate-700")}>
+                                                        {item.stockLevel} units
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell>${item.unitPrice}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="h-8"
+                                                        onClick={() => {
+                                                            updateInventoryItem(item.id, { stockLevel: item.stockLevel + 50 });
+                                                            toast.success(`Restocked 50 units of ${item.name}`);
+                                                        }}
+                                                    >
+                                                        + Restock
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
                         </CardContent>
                     </Card>
                 </TabsContent>
