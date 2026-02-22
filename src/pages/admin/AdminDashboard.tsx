@@ -13,6 +13,7 @@ import { useAppointmentStore } from '@/store/useAppointmentStore';
 import { usePatientStore } from '@/store/usePatientStore';
 import { useDoctorStore } from '@/store/useDoctorStore';
 import { useInventoryStore } from '@/store/useInventoryStore';
+import { useInvoiceStore } from '@/store/useInvoiceStore';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -29,7 +30,7 @@ const SERVICES = [
 
 export default function AdminDashboard() {
     const { appointments, subscribeToAllAppointments, cleanup, isLoading, bookAppointment } = useAppointmentStore();
-    const { patients, searchPatients, clearSearch, fetchAllPatients, isLoading: isSearching } = usePatientStore();
+    const { patients, searchResults, searchPatients, clearSearch, fetchAllPatients, isLoading: isSearching } = usePatientStore();
     const { doctors, fetchDoctors } = useDoctorStore();
     const { items: inventoryItems, updateItem: updateInventoryItem } = useInventoryStore();
 
@@ -51,7 +52,7 @@ export default function AdminDashboard() {
     const [crmSearch, setCrmSearch] = useState('');
 
     // Billing State
-    const [invoices, setInvoices] = useState<any[]>([]);
+    const { invoices, addInvoice, setInvoices } = useInvoiceStore();
     const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
     const [invoiceForm, setInvoiceForm] = useState({
         patientId: '',
@@ -70,24 +71,20 @@ export default function AdminDashboard() {
 
     // Generate Mock Invoices when appointments load
     useEffect(() => {
-        if (appointments.length > 0) {
-            setInvoices(prev => {
-                // Only generate if empty to prevent infinite loops
-                if (prev.length > 0) return prev;
-
-                return appointments
-                    .filter(a => a.status === 'completed' || a.status === 'confirmed')
-                    .map((a, i) => ({
-                        id: `INV-2026-${i + 100}`,
-                        patientName: a.patientName,
-                        amount: a.price,
-                        date: a.date,
-                        status: Math.random() > 0.3 ? 'Paid' : 'Pending',
-                        service: a.serviceName
-                    }));
-            });
+        if (appointments.length > 0 && invoices.length === 0) {
+            const generated = appointments
+                .filter(a => a.status === 'completed' || a.status === 'confirmed')
+                .map((a, i) => ({
+                    id: `INV-2026-${i + 100}`,
+                    patientName: a.patientName,
+                    amount: a.price,
+                    date: a.date,
+                    status: (Math.random() > 0.3 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
+                    service: a.serviceName
+                }));
+            if (generated.length > 0) setInvoices(generated);
         }
-    }, [appointments]);
+    }, [appointments, setInvoices, invoices.length]);
 
     // Search Debounce (Assignment modal)
     useEffect(() => {
@@ -196,11 +193,11 @@ export default function AdminDashboard() {
             patientName: patient?.displayName || 'Unknown',
             amount: `$${total}`,
             date: new Date().toISOString(),
-            status: 'Pending',
+            status: 'Pending' as const,
             service: service?.name
         };
 
-        setInvoices([newInvoice, ...invoices]);
+        addInvoice(newInvoice);
         setIsInvoiceOpen(false);
         setInvoiceForm({ patientId: '', serviceId: '', selectedItems: [], taxRate: 10, discount: 0 });
         toast.success(`Generated itemized invoice for ${newInvoice.patientName}`);
@@ -305,7 +302,7 @@ export default function AdminDashboard() {
                                 {searchTerm && (
                                     <div className="border rounded-md max-h-40 overflow-y-auto bg-slate-50 mt-1">
                                         {isSearching ? <div className="p-2 text-xs text-center text-muted-foreground">Searching...</div> :
-                                            patients.length > 0 ? patients.map(p => (
+                                            searchResults.length > 0 ? searchResults.map(p => (
                                                 <div key={p.id} className={cn("p-2 text-sm cursor-pointer hover:bg-purple-50", selectedPatient?.id === p.id && "bg-purple-100 font-medium")}
                                                     onClick={() => { setSelectedPatient(p); setSearchTerm(p.displayName || p.email); }}>
                                                     {p.displayName} <span className="text-xs text-muted-foreground">({p.email})</span>

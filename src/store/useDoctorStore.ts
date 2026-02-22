@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface Doctor {
     uid: string;
@@ -22,17 +23,26 @@ interface DoctorStore {
     fetchDoctors: () => Promise<void>;
 }
 
-export const useDoctorStore = create<DoctorStore>((set) => ({
-    doctors: [],
-    isLoading: false,
-    error: null,
+export const useDoctorStore = create<DoctorStore>()(
+    persist(
+        (set, get) => ({
+            doctors: MOCK_DOCTORS,
+            isLoading: false,
+            error: null,
 
-    fetchDoctors: async () => {
-        set({ isLoading: true, error: null });
+            fetchDoctors: async () => {
+                set({ isLoading: true, error: null });
 
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 300));
+                // Simulate network delay
+                await new Promise(resolve => setTimeout(resolve, 300));
 
-        set({ doctors: MOCK_DOCTORS, isLoading: false });
-    }
-}));
+                if (get().doctors.length === 0) set({ doctors: MOCK_DOCTORS });
+                set({ isLoading: false });
+            }
+        }),
+        {
+            name: 'hospital-doctor-storage',
+            partialize: (state) => ({ doctors: state.doctors }),
+        }
+    )
+);

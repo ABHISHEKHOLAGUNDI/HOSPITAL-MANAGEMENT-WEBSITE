@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface Patient {
     id: string;
@@ -19,38 +20,57 @@ const MOCK_PATIENTS: Patient[] = [
 
 interface PatientStore {
     patients: Patient[];
+    searchResults: Patient[];
     isLoading: boolean;
     error: string | null;
     searchPatients: (searchTerm: string) => Promise<void>;
     fetchAllPatients: () => Promise<void>;
     clearSearch: () => void;
+    addPatient: (patient: Patient) => void;
 }
 
-export const usePatientStore = create<PatientStore>((set) => ({
-    patients: [],
-    isLoading: false,
-    error: null,
+export const usePatientStore = create<PatientStore>()(
+    persist(
+        (set, get) => ({
+            patients: MOCK_PATIENTS,
+            searchResults: [],
+            isLoading: false,
+            error: null,
 
-    fetchAllPatients: async () => {
-        set({ isLoading: true, error: null });
-        await new Promise(resolve => setTimeout(resolve, 300));
-        set({ patients: MOCK_PATIENTS, isLoading: false });
-    },
+            fetchAllPatients: async () => {
+                set({ isLoading: true, error: null });
+                await new Promise(resolve => setTimeout(resolve, 300));
+                // Don't overwrite if we already have persisted patients
+                if (get().patients.length === 0) set({ patients: MOCK_PATIENTS });
+                set({ isLoading: false });
+            },
 
-    searchPatients: async (searchTerm) => {
-        if (!searchTerm.trim()) return;
-        set({ isLoading: true, error: null });
+            searchPatients: async (searchTerm) => {
+                if (!searchTerm.trim()) {
+                    set({ searchResults: [] });
+                    return;
+                }
+                set({ isLoading: true, error: null });
 
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 300));
 
-        const filtered = MOCK_PATIENTS.filter(p =>
-            p.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+                const filtered = get().patients.filter(p =>
+                    p.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    p.email.toLowerCase().includes(searchTerm.toLowerCase())
+                );
 
-        set({ patients: filtered, isLoading: false });
-    },
+                set({ searchResults: filtered, isLoading: false });
+            },
 
-    clearSearch: () => set({ patients: [], error: null })
-}));
+            clearSearch: () => set({ searchResults: [], error: null }),
+
+            addPatient: (patient) => {
+                set({ patients: [...get().patients, patient] });
+            }
+        }),
+        {
+            name: 'hospital-patient-storage',
+            partialize: (state) => ({ patients: state.patients }),
+        }
+    )
+);
