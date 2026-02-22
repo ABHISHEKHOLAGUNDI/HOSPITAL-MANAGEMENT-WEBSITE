@@ -1,0 +1,8 @@
+name = "hospital-management-system"
+compatibility_date = "2024-03-20"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hospital-db"
+database_id = "2b494921-97c3-4de7-9e70-f191d993213d"
